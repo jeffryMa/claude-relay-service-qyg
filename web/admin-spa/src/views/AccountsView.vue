@@ -272,7 +272,12 @@
                       >
                         <i class="fas fa-share-alt mr-1" />共享
                       </span>
-                      <!-- 显示所有分组 -->
+                    </div>
+                    <!-- 显示所有分组 - 换行显示 -->
+                    <div
+                      v-if="account.groupInfos && account.groupInfos.length > 0"
+                      class="flex items-center gap-2"
+                    >
                       <span
                         v-for="group in account.groupInfos"
                         :key="group.id"
@@ -376,9 +381,11 @@
                         ? 'bg-orange-100 text-orange-800'
                         : account.status === 'unauthorized'
                           ? 'bg-red-100 text-red-800'
-                          : account.isActive
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-red-100 text-red-800'
+                          : account.status === 'temp_error'
+                            ? 'bg-orange-100 text-orange-800'
+                            : account.isActive
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-red-100 text-red-800'
                     ]"
                   >
                     <div
@@ -388,9 +395,11 @@
                           ? 'bg-orange-500'
                           : account.status === 'unauthorized'
                             ? 'bg-red-500'
-                            : account.isActive
-                              ? 'bg-green-500'
-                              : 'bg-red-500'
+                            : account.status === 'temp_error'
+                              ? 'bg-orange-500'
+                              : account.isActive
+                                ? 'bg-green-500'
+                                : 'bg-red-500'
                       ]"
                     />
                     {{
@@ -398,9 +407,11 @@
                         ? '已封锁'
                         : account.status === 'unauthorized'
                           ? '异常'
-                          : account.isActive
-                            ? '正常'
-                            : '异常'
+                          : account.status === 'temp_error'
+                            ? '临时异常'
+                            : account.isActive
+                              ? '正常'
+                              : '异常'
                     }}
                   </span>
                   <span
@@ -418,7 +429,7 @@
                         typeof account.rateLimitStatus === 'object' &&
                         account.rateLimitStatus.minutesRemaining > 0
                       "
-                      >({{ account.rateLimitStatus.minutesRemaining }}分钟)</span
+                      >({{ formatRateLimitTime(account.rateLimitStatus.minutesRemaining) }})</span
                     >
                   </span>
                   <span
@@ -578,6 +589,44 @@
                     </div>
                   </div>
                 </div>
+                <!-- Claude Console: 显示每日额度使用进度 -->
+                <div v-else-if="account.platform === 'claude-console'" class="space-y-2">
+                  <div v-if="Number(account.dailyQuota) > 0">
+                    <div class="flex items-center justify-between text-xs">
+                      <span class="text-gray-600 dark:text-gray-300">额度进度</span>
+                      <span class="font-medium text-gray-700 dark:text-gray-200">
+                        {{ getQuotaUsagePercent(account).toFixed(1) }}%
+                      </span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <div class="h-2 w-24 rounded-full bg-gray-200 dark:bg-gray-700">
+                        <div
+                          :class="[
+                            'h-2 rounded-full transition-all duration-300',
+                            getQuotaBarClass(getQuotaUsagePercent(account))
+                          ]"
+                          :style="{ width: Math.min(100, getQuotaUsagePercent(account)) + '%' }"
+                        />
+                      </div>
+                      <span
+                        class="min-w-[32px] text-xs font-medium text-gray-700 dark:text-gray-200"
+                      >
+                        ${{ formatCost(account.usage?.daily?.cost || 0) }} / ${{
+                          Number(account.dailyQuota).toFixed(2)
+                        }}
+                      </span>
+                    </div>
+                    <div class="text-xs text-gray-600 dark:text-gray-400">
+                      剩余 ${{ formatRemainingQuota(account) }}
+                      <span class="ml-2 text-gray-400"
+                        >重置 {{ account.quotaResetTime || '00:00' }}</span
+                      >
+                    </div>
+                  </div>
+                  <div v-else class="text-sm text-gray-400">
+                    <i class="fas fa-minus" />
+                  </div>
+                </div>
                 <div v-else-if="account.platform === 'claude'" class="text-sm text-gray-400">
                   <i class="fas fa-minus" />
                 </div>
@@ -592,7 +641,9 @@
                 <div class="flex flex-wrap items-center gap-1">
                   <button
                     v-if="
-                      account.platform === 'claude' &&
+                      (account.platform === 'claude' ||
+                        account.platform === 'claude-console' ||
+                        account.platform === 'openai') &&
                       (account.status === 'unauthorized' ||
                         account.status !== 'active' ||
                         account.rateLimitStatus?.isRateLimited ||
@@ -1292,7 +1343,7 @@ const loadApiKeys = async (forceReload = false) => {
       apiKeysLoaded.value = true
     }
   } catch (error) {
-    console.error('Failed to load API keys:', error)
+    // 静默处理错误
   }
 }
 
@@ -1309,7 +1360,7 @@ const loadAccountGroups = async (forceReload = false) => {
       groupsLoaded.value = true
     }
   } catch (error) {
-    console.error('Failed to load account groups:', error)
+    // 静默处理错误
   }
 }
 
@@ -1380,6 +1431,38 @@ const formatRemainingTime = (minutes) => {
     return `${hours}小时${mins}分钟`
   }
   return `${mins}分钟`
+}
+
+// 格式化限流时间（支持显示天数）
+const formatRateLimitTime = (minutes) => {
+  if (!minutes || minutes <= 0) return ''
+
+  // 转换为整数，避免小数
+  minutes = Math.floor(minutes)
+
+  // 计算天数、小时和分钟
+  const days = Math.floor(minutes / 1440) // 1天 = 1440分钟
+  const remainingAfterDays = minutes % 1440
+  const hours = Math.floor(remainingAfterDays / 60)
+  const mins = remainingAfterDays % 60
+
+  // 根据时间长度返回不同格式
+  if (days > 0) {
+    // 超过1天，显示天数和小时
+    if (hours > 0) {
+      return `${days}天${hours}小时`
+    }
+    return `${days}天`
+  } else if (hours > 0) {
+    // 超过1小时但不到1天，显示小时和分钟
+    if (mins > 0) {
+      return `${hours}小时${mins}分钟`
+    }
+    return `${hours}小时`
+  } else {
+    // 不到1小时，只显示分钟
+    return `${mins}分钟`
+  }
 }
 
 // 打开创建账户模态框
@@ -1471,7 +1554,22 @@ const resetAccountStatus = async (account) => {
 
   try {
     account.isResetting = true
-    const data = await apiClient.post(`/admin/claude-accounts/${account.id}/reset-status`)
+
+    // 根据账户平台选择不同的 API 端点
+    let endpoint = ''
+    if (account.platform === 'openai') {
+      endpoint = `/admin/openai-accounts/${account.id}/reset-status`
+    } else if (account.platform === 'claude') {
+      endpoint = `/admin/claude-accounts/${account.id}/reset-status`
+    } else if (account.platform === 'claude-console') {
+      endpoint = `/admin/claude-console-accounts/${account.id}/reset-status`
+    } else {
+      showToast('不支持的账户类型', 'error')
+      account.isResetting = false
+      return
+    }
+
+    const data = await apiClient.post(endpoint)
 
     if (data.success) {
       showToast('账户状态已重置', 'success')
@@ -1577,13 +1675,7 @@ const getClaudeAccountType = (account) => {
           ? JSON.parse(account.subscriptionInfo)
           : account.subscriptionInfo
 
-      // 添加调试日志
-      console.log('Account subscription info:', {
-        accountName: account.name,
-        subscriptionInfo: info,
-        hasClaudeMax: info.hasClaudeMax,
-        hasClaudePro: info.hasClaudePro
-      })
+      // 订阅信息已解析
 
       // 根据 has_claude_max 和 has_claude_pro 判断
       if (info.hasClaudeMax === true) {
@@ -1595,13 +1687,11 @@ const getClaudeAccountType = (account) => {
       }
     } catch (e) {
       // 解析失败，返回默认值
-      console.error('Failed to parse subscription info:', e)
       return 'Claude'
     }
   }
 
   // 没有订阅信息，保持原有显示
-  console.log('No subscription info for account:', account.name)
   return 'Claude'
 }
 
@@ -1630,6 +1720,9 @@ const getSchedulableReason = (account) => {
     if (account.status === 'unauthorized') {
       return '认证失败（401错误）'
     }
+    if (account.status === 'temp_error' && account.errorMessage) {
+      return account.errorMessage
+    }
     if (account.status === 'error' && account.errorMessage) {
       return account.errorMessage
     }
@@ -1639,6 +1732,23 @@ const getSchedulableReason = (account) => {
     // 自动停止调度的原因
     if (account.stoppedReason) {
       return account.stoppedReason
+    }
+  }
+
+  // OpenAI 账户的错误状态
+  if (account.platform === 'openai') {
+    if (account.status === 'unauthorized') {
+      return '认证失败（401错误）'
+    }
+    // 检查限流状态 - 兼容嵌套的 rateLimitStatus 对象
+    if (
+      (account.rateLimitStatus && account.rateLimitStatus.isRateLimited) ||
+      account.isRateLimited
+    ) {
+      return '触发限流（429错误）'
+    }
+    if (account.status === 'error' && account.errorMessage) {
+      return account.errorMessage
     }
   }
 
@@ -1668,6 +1778,8 @@ const getAccountStatusText = (account) => {
     account.rateLimitStatus === 'limited'
   )
     return '限流中'
+  // 检查是否临时错误
+  if (account.status === 'temp_error') return '临时异常'
   // 检查是否错误
   if (account.status === 'error' || !account.isActive) return '错误'
   // 检查是否可调度
@@ -1690,6 +1802,9 @@ const getAccountStatusClass = (account) => {
     (account.rateLimitStatus && account.rateLimitStatus.isRateLimited) ||
     account.rateLimitStatus === 'limited'
   ) {
+    return 'bg-orange-100 text-orange-800'
+  }
+  if (account.status === 'temp_error') {
     return 'bg-orange-100 text-orange-800'
   }
   if (account.status === 'error' || !account.isActive) {
@@ -1715,6 +1830,9 @@ const getAccountStatusDotClass = (account) => {
     (account.rateLimitStatus && account.rateLimitStatus.isRateLimited) ||
     account.rateLimitStatus === 'limited'
   ) {
+    return 'bg-orange-500'
+  }
+  if (account.status === 'temp_error') {
     return 'bg-orange-500'
   }
   if (account.status === 'error' || !account.isActive) {
@@ -1769,6 +1887,29 @@ const formatCost = (cost) => {
   if (cost < 0.01) return cost.toFixed(6)
   if (cost < 1) return cost.toFixed(4)
   return cost.toFixed(2)
+}
+
+// 额度使用百分比（Claude Console）
+const getQuotaUsagePercent = (account) => {
+  const used = Number(account?.usage?.daily?.cost || 0)
+  const quota = Number(account?.dailyQuota || 0)
+  if (!quota || quota <= 0) return 0
+  return (used / quota) * 100
+}
+
+// 额度进度条颜色（Claude Console）
+const getQuotaBarClass = (percent) => {
+  if (percent >= 90) return 'bg-red-500'
+  if (percent >= 70) return 'bg-yellow-500'
+  return 'bg-green-500'
+}
+
+// 剩余额度（Claude Console）
+const formatRemainingQuota = (account) => {
+  const used = Number(account?.usage?.daily?.cost || 0)
+  const quota = Number(account?.dailyQuota || 0)
+  if (!quota || quota <= 0) return '0.00'
+  return Math.max(0, quota - used).toFixed(2)
 }
 
 // 计算每日费用（使用后端返回的精确费用数据）

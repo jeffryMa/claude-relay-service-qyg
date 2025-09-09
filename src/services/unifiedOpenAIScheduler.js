@@ -90,6 +90,8 @@ class UnifiedOpenAIScheduler {
             mappedAccount.accountType
           )
           if (isAvailable) {
+            // 🚀 智能会话续期：剩余时间少于14天时自动续期到15天
+            await redis.extendSessionAccountMappingTTL(sessionHash)
             logger.info(
               `🎯 Using sticky session account: ${mappedAccount.accountId} (${mappedAccount.accountType}) for session ${sessionHash}`
             )
@@ -167,7 +169,7 @@ class UnifiedOpenAIScheduler {
 
     // 获取所有OpenAI账户（共享池）
     const openaiAccounts = await openaiAccountService.getAllAccounts()
-    for (const account of openaiAccounts) {
+    for (let account of openaiAccounts) {
       if (
         account.isActive &&
         account.status !== 'error' &&
@@ -176,13 +178,27 @@ class UnifiedOpenAIScheduler {
       ) {
         // 检查是否可调度
 
-        // 检查token是否过期
+        // 检查token是否过期并自动刷新
         const isExpired = openaiAccountService.isTokenExpired(account)
-        if (isExpired && !account.refreshToken) {
-          logger.warn(
-            `⚠️ OpenAI account ${account.name} token expired and no refresh token available`
-          )
-          continue
+        if (isExpired) {
+          if (!account.refreshToken) {
+            logger.warn(
+              `⚠️ OpenAI account ${account.name} token expired and no refresh token available`
+            )
+            continue
+          }
+
+          // 自动刷新过期的 token
+          try {
+            logger.info(`🔄 Auto-refreshing expired token for OpenAI account ${account.name}`)
+            await openaiAccountService.refreshAccountToken(account.id)
+            // 重新获取更新后的账户信息
+            account = await openaiAccountService.getAccount(account.id)
+            logger.info(`✅ Token refreshed successfully for ${account.name}`)
+          } catch (refreshError) {
+            logger.error(`❌ Failed to refresh token for ${account.name}:`, refreshError.message)
+            continue // 刷新失败，跳过此账户
+          }
         }
 
         // 检查模型支持（仅在明确设置了supportedModels且不为空时才检查）
@@ -287,10 +303,10 @@ class UnifiedOpenAIScheduler {
   }
 
   // 🚫 标记账户为限流状态
-  async markAccountRateLimited(accountId, accountType, sessionHash = null) {
+  async markAccountRateLimited(accountId, accountType, sessionHash = null, resetsInSeconds = null) {
     try {
       if (accountType === 'openai') {
-        await openaiAccountService.setAccountRateLimited(accountId, true)
+        await openaiAccountService.setAccountRateLimited(accountId, true, resetsInSeconds)
       }
 
       // 删除会话映射
@@ -333,12 +349,30 @@ class UnifiedOpenAIScheduler {
         return false
       }
 
-      if (account.rateLimitStatus === 'limited' && account.rateLimitedAt) {
-        const limitedAt = new Date(account.rateLimitedAt).getTime()
-        const now = Date.now()
-        const limitDuration = 60 * 60 * 1000 // 1小时
+      if (account.rateLimitStatus === 'limited') {
+        // 如果有具体的重置时间，使用它
+        if (account.rateLimitResetAt) {
+          const resetTime = new Date(account.rateLimitResetAt).getTime()
+          const now = Date.now()
+          const isStillLimited = now < resetTime
 
-        return now < limitedAt + limitDuration
+          // 如果已经过了重置时间，自动清除限流状态
+          if (!isStillLimited) {
+            logger.info(`✅ Auto-clearing rate limit for account ${accountId} (reset time reached)`)
+            await openaiAccountService.setAccountRateLimited(accountId, false)
+            return false
+          }
+
+          return isStillLimited
+        }
+
+        // 如果没有具体的重置时间，使用默认的1小时
+        if (account.rateLimitedAt) {
+          const limitedAt = new Date(account.rateLimitedAt).getTime()
+          const now = Date.now()
+          const limitDuration = 60 * 60 * 1000 // 1小时
+          return now < limitedAt + limitDuration
+        }
       }
       return false
     } catch (error) {
@@ -374,6 +408,8 @@ class UnifiedOpenAIScheduler {
               mappedAccount.accountType
             )
             if (isAvailable) {
+              // 🚀 智能会话续期：剩余时间少于14天时自动续期到15天
+              await redis.extendSessionAccountMappingTTL(sessionHash)
               logger.info(
                 `🎯 Using sticky session account from group: ${mappedAccount.accountId} (${mappedAccount.accountType})`
               )
