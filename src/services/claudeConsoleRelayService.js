@@ -6,6 +6,7 @@ const config = require('../../config/config')
 class ClaudeConsoleRelayService {
   constructor() {
     this.defaultUserAgent = 'claude-cli/1.0.69 (external, cli)'
+    this.claudeCodeSystemPrompt = "You are Claude Code, Anthropic's official CLI for Claude."
   }
 
   // 🚀 转发请求到Claude Console API
@@ -52,11 +53,13 @@ class ClaudeConsoleRelayService {
         }
       }
 
-      // 创建修改后的请求体
-      const modifiedRequestBody = {
+      // 创建修改后的请求体并注入 Claude Code 系统提示词
+      let modifiedRequestBody = this._ensureClaudeCodeSystemPrompt({
         ...requestBody,
         model: mappedModel
-      }
+      })
+      // 注入 metadata.user_id
+      modifiedRequestBody = this._ensureMetadataUserId(modifiedRequestBody)
 
       // 模型兼容性检查已经在调度器中完成，这里不需要再检查
 
@@ -265,11 +268,13 @@ class ClaudeConsoleRelayService {
         }
       }
 
-      // 创建修改后的请求体
-      const modifiedRequestBody = {
+      // 创建修改后的请求体并注入 Claude Code 系统提示词
+      let modifiedRequestBody = this._ensureClaudeCodeSystemPrompt({
         ...requestBody,
         model: mappedModel
-      }
+      })
+      // 注入 metadata.user_id（流式）
+      modifiedRequestBody = this._ensureMetadataUserId(modifiedRequestBody)
 
       // 模型兼容性检查已经在调度器中完成，这里不需要再检查
 
@@ -626,6 +631,25 @@ class ClaudeConsoleRelayService {
     })
   }
 
+  // 🧩 确保包含 metadata.user_id，格式类似示例：
+  // user_<sha256hex>_account__session_<uuid or sessionHash>
+  _ensureMetadataUserId(body) {
+    try {
+      if (!body || typeof body !== 'object') return body
+      const clone = JSON.parse(JSON.stringify(body))
+      const userId = 'user_c84e4aaefafb1f89861c00ad336c4567e596e909e291158853af77965ecee51f_account__session_9ce6175e-6161-4aa8-b364-0d2d62410f5b'
+
+      if (!clone.metadata || typeof clone.metadata !== 'object') {
+        clone.metadata = { user_id: userId }
+      } else {
+        clone.metadata.user_id = userId
+      }
+      return clone
+    } catch (e) {
+      return body
+    }
+  }
+
   // 🔧 过滤客户端请求头
   _filterClientHeaders(clientHeaders) {
     const sensitiveHeaders = [
@@ -652,6 +676,53 @@ class ClaudeConsoleRelayService {
     })
 
     return filteredHeaders
+  }
+
+  // 🧩 确保请求体包含 Claude Code 系统提示词（最前置）
+  _ensureClaudeCodeSystemPrompt(body) {
+    try {
+      if (!body) return body
+
+      // 深拷贝，避免副作用
+      const processedBody = JSON.parse(JSON.stringify(body))
+
+      const claudeCodePrompt = {
+        type: 'text',
+        text: this.claudeCodeSystemPrompt,
+        cache_control: { type: 'ephemeral' }
+      }
+
+      if (processedBody.system) {
+        if (typeof processedBody.system === 'string') {
+          const userSystemPrompt = { type: 'text', text: processedBody.system }
+          if (processedBody.system.trim() === this.claudeCodeSystemPrompt) {
+            processedBody.system = [claudeCodePrompt]
+          } else {
+            processedBody.system = [claudeCodePrompt, userSystemPrompt]
+          }
+        } else if (Array.isArray(processedBody.system)) {
+          const firstItem = processedBody.system[0]
+          const isFirstClaudeCode =
+            firstItem && firstItem.type === 'text' && firstItem.text === this.claudeCodeSystemPrompt
+          if (!isFirstClaudeCode) {
+            const filteredSystem = processedBody.system.filter(
+              (item) => !(item && item.type === 'text' && item.text === this.claudeCodeSystemPrompt)
+            )
+            processedBody.system = [claudeCodePrompt, ...filteredSystem]
+          }
+        } else {
+          // 未知类型，回落为仅注入 Claude Code 提示词
+          processedBody.system = [claudeCodePrompt]
+        }
+      } else {
+        processedBody.system = [claudeCodePrompt]
+      }
+
+      return processedBody
+    } catch (e) {
+      // 出现异常时，不阻断请求，原样返回
+      return body
+    }
   }
 
   // 🕐 更新最后使用时间

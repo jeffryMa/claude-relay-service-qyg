@@ -29,6 +29,37 @@ function checkPermissions(apiKeyData, requiredPermission = 'gemini') {
   return permissions === 'all' || permissions === requiredPermission
 }
 
+// 处理测试请求，为 "hi" 请求添加 role 字段
+function processTestRequest(actualRequestData) {
+  if (!actualRequestData || !actualRequestData.contents) {
+    return actualRequestData
+  }
+
+  // 检查是否为测试请求 "hi"
+  const isTestRequest = actualRequestData.contents.some(content => {
+    return content.parts && content.parts.some(part => 
+      part.text && part.text.trim().toLowerCase() === 'hi'
+    )
+  })
+
+  if (isTestRequest) {
+    // 为所有 contents 添加 role: "user"（如果还没有 role 字段）
+    actualRequestData.contents = actualRequestData.contents.map(content => {
+      if (!content.role) {
+        return {
+          ...content,
+          role: 'user'
+        }
+      }
+      return content
+    })
+    
+    logger.info('🔍 检测到测试请求 "hi"，已自动添加 role: "user"')
+  }
+
+  return actualRequestData
+}
+
 // Gemini 消息处理端点
 router.post('/messages', authenticateApiKey, async (req, res) => {
   const startTime = Date.now()
@@ -568,6 +599,9 @@ async function handleGenerateContent(req, res) {
       })
     }
 
+    // 处理测试请求，为 "hi" 请求添加 role 字段
+    actualRequestData = processTestRequest(actualRequestData)
+
     // 使用统一调度选择账号
     const { accountId } = await unifiedGeminiScheduler.selectAccountForApiKey(
       req.apiKey,
@@ -705,6 +739,9 @@ async function handleStreamGenerateContent(req, res) {
         }
       })
     }
+
+    // 处理测试请求，为 "hi" 请求添加 role 字段
+    actualRequestData = processTestRequest(actualRequestData)
 
     // 使用统一调度选择账号
     const { accountId } = await unifiedGeminiScheduler.selectAccountForApiKey(

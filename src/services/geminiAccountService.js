@@ -785,7 +785,7 @@ function isRateLimited(account) {
   if (account.rateLimitStatus === 'limited' && account.rateLimitedAt) {
     const limitedAt = new Date(account.rateLimitedAt).getTime()
     const now = Date.now()
-    const limitDuration = 60 * 60 * 1000 // 1小时
+    const limitDuration = 1 * 60 * 1000 // 1小时
 
     return now < limitedAt + limitDuration
   }
@@ -948,8 +948,8 @@ async function getAccountRateLimitInfo(accountId) {
       const minutesSinceRateLimit = Math.floor((now - rateLimitedAt) / (1000 * 60))
 
       // Gemini 限流持续时间为 1 小时
-      const minutesRemaining = Math.max(0, 60 - minutesSinceRateLimit)
-      const rateLimitEndAt = new Date(rateLimitedAt.getTime() + 60 * 60 * 1000).toISOString()
+      const minutesRemaining = Math.max(0, 1 - minutesSinceRateLimit)
+      const rateLimitEndAt = new Date(rateLimitedAt.getTime() + 1 * 60 * 1000).toISOString()
 
       return {
         isRateLimited: minutesRemaining > 0,
@@ -1317,7 +1317,7 @@ async function generateContent(
       'Content-Type': 'application/json'
     },
     data: request,
-    timeout: 60000 // 生成内容可能需要更长时间
+    timeout: 180000 // 生成内容可能需要更长时间
   }
 
   // 添加代理配置
@@ -1387,7 +1387,7 @@ async function generateContentStream(
     },
     data: request,
     responseType: 'stream',
-    timeout: 60000
+    timeout: 180000
   }
 
   // 添加代理配置

@@ -161,7 +161,7 @@ router.post('/responses', authenticateApiKey, async (req, res) => {
     // 配置请求选项
     const axiosConfig = {
       headers,
-      timeout: 60000,
+      timeout: 180000,
       validateStatus: () => true
     }
 

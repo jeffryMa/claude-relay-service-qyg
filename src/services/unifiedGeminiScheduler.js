@@ -344,7 +344,7 @@ class UnifiedGeminiScheduler {
       if (account.rateLimitStatus === 'limited' && account.rateLimitedAt) {
         const limitedAt = new Date(account.rateLimitedAt).getTime()
         const now = Date.now()
-        const limitDuration = 60 * 60 * 1000 // 1小时
+        const limitDuration = 1 * 60 * 1000 // 1分钟
 
         return now < limitedAt + limitDuration
       }
