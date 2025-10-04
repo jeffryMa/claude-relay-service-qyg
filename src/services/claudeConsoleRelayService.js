@@ -28,15 +28,18 @@ class ClaudeConsoleRelayService {
         throw new Error('Claude Console Claude account not found')
       }
 
-      logger.info(
-        `📤 Processing Claude Console API request for key: ${apiKeyData.name || apiKeyData.id}, account: ${account.name} (${accountId})`
-      )
-      logger.debug(`🌐 Account API URL: ${account.apiUrl}`)
-      logger.debug(`🔍 Account supportedModels: ${JSON.stringify(account.supportedModels)}`)
-      logger.debug(`🔑 Account has apiKey: ${!!account.apiKey}`)
-      logger.debug(`📝 Request model: ${requestBody.model}`)
+      // logger.info('🔍 ===== Claude Console Account & Request Info =====')
+      // logger.info(`📤 Processing Claude Console API request for key: ${apiKeyData.name || apiKeyData.id}, account: ${account.name} (${accountId})`)
+      // logger.info(`🌐 Account API URL: ${account.apiUrl}`)
+      // logger.info(`🔍 Account supportedModels: ${JSON.stringify(account.supportedModels)}`)
+      // logger.info(`🔑 Account has apiKey: ${!!account.apiKey}`)
+      // logger.info(`🔑 Account apiKey prefix: ${account.apiKey ? account.apiKey.substring(0, 10) + '...' : 'N/A'}`)
+      // logger.info(`📝 Original request model: ${requestBody.model}`)
+      // logger.info(`📝 Original request body: ${JSON.stringify(requestBody, null, 2)}`)
+      // logger.info('🔍 ================================================')
 
       // 处理模型映射
+      // logger.info('🔄 ===== Model Mapping Process =====')
       let mappedModel = requestBody.model
       if (
         account.supportedModels &&
@@ -48,18 +51,29 @@ class ClaudeConsoleRelayService {
           requestBody.model
         )
         if (newModel !== requestBody.model) {
-          logger.info(`🔄 Mapping model from ${requestBody.model} to ${newModel}`)
+          // logger.info(`🔄 Mapping model from ${requestBody.model} to ${newModel}`)
           mappedModel = newModel
+        } else {
+          // logger.info(`✅ Model ${requestBody.model} does not need mapping`)
         }
+      } else {
+        // logger.info(`✅ No model mapping needed (supportedModels: ${JSON.stringify(account.supportedModels)})`)
       }
+      // logger.info(`📝 Final mapped model: ${mappedModel}`)
+      // logger.info('🔄 ================================')
 
       // 创建修改后的请求体并注入 Claude Code 系统提示词
+      // logger.info('📝 ===== Request Body Modification =====')
       let modifiedRequestBody = this._ensureClaudeCodeSystemPrompt({
         ...requestBody,
         model: mappedModel
       })
+      // logger.info(`📝 After Claude Code system prompt injection: ${JSON.stringify(modifiedRequestBody, null, 2)}`)
+
       // 注入 metadata.user_id
       modifiedRequestBody = this._ensureMetadataUserId(modifiedRequestBody)
+      // logger.info(`📝 After metadata.user_id injection: ${JSON.stringify(modifiedRequestBody, null, 2)}`)
+      // logger.info('📝 =====================================')
 
       // 模型兼容性检查已经在调度器中完成，这里不需要再检查
 
@@ -98,6 +112,9 @@ class ClaudeConsoleRelayService {
         apiEndpoint = cleanUrl.endsWith('/v1/messages') ? cleanUrl : `${cleanUrl}/v1/messages`
       }
 
+      // 添加 ?beta=true 参数
+      apiEndpoint += '?beta=true'
+
       logger.debug(`🎯 Final API endpoint: ${apiEndpoint}`)
       logger.debug(`[DEBUG] Options passed to relayRequest: ${JSON.stringify(options)}`)
       logger.debug(`[DEBUG] Client headers received: ${JSON.stringify(clientHeaders)}`)
@@ -130,6 +147,15 @@ class ClaudeConsoleRelayService {
         validateStatus: () => true // 接受所有状态码
       }
 
+      // 添加 x-app: cli 请求头（如果不存在的话）
+      if (!requestConfig.headers['x-app'] && !requestConfig.headers['X-App']) {
+        requestConfig.headers['x-app'] = 'cli'
+       logger.debug('[DEBUG] Added x-app: cli header')
+      } else {
+       logger.debug('[DEBUG] x-app header already exists, skipping')
+      }
+
+
       // 根据 API Key 格式选择认证方式
       if (account.apiKey && account.apiKey.startsWith('sk-ant-')) {
         // Anthropic 官方 API Key 使用 x-api-key
@@ -153,11 +179,15 @@ class ClaudeConsoleRelayService {
         logger.debug('[DEBUG] No beta header to add')
       }
 
-      // 发送请求
-      logger.debug(
-        '📤 Sending request to Claude Console API with headers:',
-        JSON.stringify(requestConfig.headers, null, 2)
-      )
+      // 发送请求前打印完整信息
+      // logger.info('🚀 ===== Claude Console API Request Details =====')
+      // logger.info(`📍 Request URL: ${requestConfig.url}`)
+      // logger.info(`🔧 Request Method: ${requestConfig.method}`)
+      // logger.info(`📋 Request Headers: ${JSON.stringify(requestConfig.headers, null, 2)}`)
+      // logger.info(`📦 Request Body: ${JSON.stringify(requestConfig.data, null, 2)}`)
+      // logger.info(`⏱️  Request Timeout: ${requestConfig.timeout}ms`)
+      // logger.info('🚀 ================================================')
+
       const response = await axios(requestConfig)
 
       // 移除监听器（请求成功完成）
@@ -168,15 +198,23 @@ class ClaudeConsoleRelayService {
         clientResponse.removeListener('close', handleClientDisconnect)
       }
 
-      logger.debug(`🔗 Claude Console API response: ${response.status}`)
-      logger.debug(`[DEBUG] Response headers: ${JSON.stringify(response.headers)}`)
-      logger.debug(`[DEBUG] Response data type: ${typeof response.data}`)
-      logger.debug(
-        `[DEBUG] Response data length: ${response.data ? (typeof response.data === 'string' ? response.data.length : JSON.stringify(response.data).length) : 0}`
-      )
-      logger.debug(
-        `[DEBUG] Response data preview: ${typeof response.data === 'string' ? response.data.substring(0, 200) : JSON.stringify(response.data).substring(0, 200)}`
-      )
+      // 打印响应信息
+      // logger.info('📥 ===== Claude Console API Response Details =====')
+      // logger.info(`🔗 Response Status: ${response.status}`)
+      // logger.info(`📋 Response Headers: ${JSON.stringify(response.headers, null, 2)}`)
+      // logger.info(`📦 Response Data Type: ${typeof response.data}`)
+      // logger.info(`📏 Response Data Length: ${response.data ? (typeof response.data === 'string' ? response.data.length : JSON.stringify(response.data).length) : 0}`)
+      //
+      // // 打印响应数据（限制长度避免日志过长）
+      // const responseDataStr = typeof response.data === 'string' ? response.data : JSON.stringify(response.data)
+      // const maxLength = 1000
+      // if (responseDataStr.length > maxLength) {
+      //   logger.info(`📦 Response Data (first ${maxLength} chars): ${responseDataStr.substring(0, maxLength)}...`)
+      //   logger.info(`📦 Response Data (last 200 chars): ...${responseDataStr.substring(responseDataStr.length - 200)}`)
+      // } else {
+      //   logger.info(`📦 Response Data: ${responseDataStr}`)
+      // }
+      // logger.info('📥 ================================================')
 
       // 检查错误状态并相应处理
       if (response.status === 401) {
@@ -324,7 +362,10 @@ class ClaudeConsoleRelayService {
 
       // 构建完整的API URL
       const cleanUrl = account.apiUrl.replace(/\/$/, '') // 移除末尾斜杠
-      const apiEndpoint = cleanUrl.endsWith('/v1/messages') ? cleanUrl : `${cleanUrl}/v1/messages`
+      let apiEndpoint = cleanUrl.endsWith('/v1/messages') ? cleanUrl : `${cleanUrl}/v1/messages`
+
+      // 添加 ?beta=true 参数
+      apiEndpoint += '?beta=true'
 
       logger.debug(`🎯 Final API endpoint for stream: ${apiEndpoint}`)
 
@@ -355,6 +396,15 @@ class ClaudeConsoleRelayService {
         responseType: 'stream',
         validateStatus: () => true // 接受所有状态码
       }
+
+       // 添加 x-app: cli 请求头（如果不存在的话）
+       if (!requestConfig.headers['x-app'] && !requestConfig.headers['X-App']) {
+         requestConfig.headers['x-app'] = 'cli'
+         logger.debug('[DEBUG] Added x-app: cli header for stream')
+       } else {
+         logger.debug('[DEBUG] x-app header already exists for stream, skipping')
+       }
+
 
       // 根据 API Key 格式选择认证方式
       if (account.apiKey && account.apiKey.startsWith('sk-ant-')) {
@@ -704,6 +754,28 @@ class ClaudeConsoleRelayService {
         text: this.claudeCodeSystemPrompt,
         cache_control: { type: 'ephemeral' }
       }
+
+       // 添加 system-reminder 消息到 messages 前面
+       if (processedBody.messages && Array.isArray(processedBody.messages)) {
+         // 创建包含两个 system-reminder 的 user 角色消息
+         const systemReminderMessage = {
+           role: "user",
+           content: [
+             {
+               type: "text",
+               text: "<system-reminder></system-reminder>"
+             },
+             {
+               type: "text",
+               text: "<system-reminder></system-reminder>"
+             }
+           ]
+         }
+
+         // 将 system-reminder 消息插入到 messages 数组的第一个位置
+         processedBody.messages.unshift(systemReminderMessage)
+         // logger.debug('[DEBUG] Added system-reminder message to messages array')
+       }
 
       if (processedBody.system) {
         if (typeof processedBody.system === 'string') {
