@@ -110,9 +110,6 @@ class RateLimitCleanupService {
         )
       }
 
-      // 清空已清理账户列表
-      this.clearedAccounts = []
-
       // 记录错误
       const allErrors = [
         ...results.openai.errors,
@@ -125,6 +122,8 @@ class RateLimitCleanupService {
     } catch (error) {
       logger.error('❌ Rate limit cleanup failed:', error)
     } finally {
+      // 确保无论成功或失败都重置列表，避免重复通知
+      this.clearedAccounts = []
       this.isRunning = false
     }
   }
@@ -134,11 +133,18 @@ class RateLimitCleanupService {
    */
   async cleanupOpenAIAccounts(result) {
     try {
+      // 使用服务层获取账户数据
       const accounts = await openaiAccountService.getAllAccounts()
 
       for (const account of accounts) {
-        // 只检查标记为限流的账号
-        if (account.rateLimitStatus === 'limited') {
+        const { rateLimitStatus } = account
+        const isRateLimited =
+          rateLimitStatus === 'limited' ||
+          (rateLimitStatus &&
+            typeof rateLimitStatus === 'object' &&
+            (rateLimitStatus.status === 'limited' || rateLimitStatus.isRateLimited === true))
+
+        if (isRateLimited) {
           result.checked++
 
           try {
@@ -180,11 +186,24 @@ class RateLimitCleanupService {
    */
   async cleanupClaudeAccounts(result) {
     try {
-      const accounts = await claudeAccountService.getAllAccounts()
+      // 使用 Redis 获取账户数据
+      const redis = require('../models/redis')
+      const accounts = await redis.getAllClaudeAccounts()
 
       for (const account of accounts) {
-        // 只检查标记为限流的账号
-        if (account.rateLimitStatus === 'limited' || account.rateLimitedAt) {
+        // 检查是否处于限流状态（兼容对象和字符串格式）
+        const isRateLimited =
+          account.rateLimitStatus === 'limited' ||
+          (account.rateLimitStatus &&
+            typeof account.rateLimitStatus === 'object' &&
+            account.rateLimitStatus.status === 'limited')
+
+        const autoStopped = account.rateLimitAutoStopped === 'true'
+        const needsAutoStopRecovery =
+          autoStopped && (account.rateLimitEndAt || account.schedulable === 'false')
+
+        // 检查所有可能处于限流状态的账号，包括自动停止的账号
+        if (isRateLimited || account.rateLimitedAt || needsAutoStopRecovery) {
           result.checked++
 
           try {
@@ -192,6 +211,9 @@ class RateLimitCleanupService {
             const isStillLimited = await claudeAccountService.isAccountRateLimited(account.id)
 
             if (!isStillLimited) {
+              if (!isRateLimited && autoStopped) {
+                await claudeAccountService.removeAccountRateLimit(account.id)
+              }
               result.cleared++
               logger.info(
                 `🧹 Auto-cleared expired rate limit for Claude account: ${account.name} (${account.id})`
@@ -215,6 +237,39 @@ class RateLimitCleanupService {
           }
         }
       }
+
+      // 检查并恢复因5小时限制被自动停止的账号
+      try {
+        const fiveHourResult = await claudeAccountService.checkAndRecoverFiveHourStoppedAccounts()
+
+        if (fiveHourResult.recovered > 0) {
+          // 将5小时限制恢复的账号也加入到已清理账户列表中，用于发送通知
+          for (const account of fiveHourResult.accounts) {
+            this.clearedAccounts.push({
+              platform: 'Claude',
+              accountId: account.id,
+              accountName: account.name,
+              previousStatus: '5hour_limited',
+              currentStatus: 'active',
+              windowInfo: account.newWindow
+            })
+          }
+
+          // 更新统计数据
+          result.checked += fiveHourResult.checked
+          result.cleared += fiveHourResult.recovered
+
+          logger.info(
+            `🕐 Claude 5-hour limit recovery: ${fiveHourResult.recovered}/${fiveHourResult.checked} accounts recovered`
+          )
+        }
+      } catch (error) {
+        logger.error('Failed to check and recover 5-hour stopped Claude accounts:', error)
+        result.errors.push({
+          type: '5hour_recovery',
+          error: error.message
+        })
+      }
     } catch (error) {
       logger.error('Failed to cleanup Claude accounts:', error)
       result.errors.push({ error: error.message })
@@ -226,14 +281,24 @@ class RateLimitCleanupService {
    */
   async cleanupClaudeConsoleAccounts(result) {
     try {
+      // 使用服务层获取账户数据
       const accounts = await claudeConsoleAccountService.getAllAccounts()
 
       for (const account of accounts) {
+        // 检查是否处于限流状态（兼容对象和字符串格式）
+        const isRateLimited =
+          account.rateLimitStatus === 'limited' ||
+          (account.rateLimitStatus &&
+            typeof account.rateLimitStatus === 'object' &&
+            account.rateLimitStatus.status === 'limited')
+
+        const autoStopped = account.rateLimitAutoStopped === 'true'
+        const needsAutoStopRecovery = autoStopped && account.schedulable === 'false'
+
         // 检查两种状态字段：rateLimitStatus 和 status
-        const hasRateLimitStatus = account.rateLimitStatus === 'limited'
         const hasStatusRateLimited = account.status === 'rate_limited'
 
-        if (hasRateLimitStatus || hasStatusRateLimited) {
+        if (isRateLimited || hasStatusRateLimited || needsAutoStopRecovery) {
           result.checked++
 
           try {
@@ -243,10 +308,13 @@ class RateLimitCleanupService {
             )
 
             if (!isStillLimited) {
+              if (!isRateLimited && autoStopped) {
+                await claudeConsoleAccountService.removeAccountRateLimit(account.id)
+              }
               result.cleared++
 
               // 如果 status 字段是 rate_limited，需要额外清理
-              if (hasStatusRateLimited && !hasRateLimitStatus) {
+              if (hasStatusRateLimited && !isRateLimited) {
                 await claudeConsoleAccountService.updateAccount(account.id, {
                   status: 'active'
                 })
