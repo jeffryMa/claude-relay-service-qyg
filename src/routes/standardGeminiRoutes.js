@@ -9,7 +9,34 @@ const sessionHelper = require('../utils/sessionHelper')
 
 // 导入 geminiRoutes 中导出的处理函数
 const { handleLoadCodeAssist, handleOnboardUser, handleCountTokens } = require('./geminiRoutes')
+// 处理测试请求，为 "hi" 请求添加 role 字段
+function processTestRequest(actualRequestData) {
+  if (!actualRequestData || !actualRequestData.contents) {
+    return actualRequestData
+  }
+  // 检查是否为测试请求 "hi"
+  const isTestRequest = actualRequestData.contents.some(content => {
+    return content.parts && content.parts.some(part =>
+        part.text && part.text.trim().toLowerCase() === 'hi'
+    )
+  })
+  if (isTestRequest) {
+    // 为所有 contents 添加 role: "user"（如果还没有 role 字段）
+    actualRequestData.contents = actualRequestData.contents.map(content => {
+      if (!content.role) {
+        return {
+          ...content,
+          role: 'user'
+        }
+      }
+      return content
+    })
 
+    logger.info('🔍 检测到测试请求 "hi"，已自动添加 role: "user"')
+  }
+
+  return actualRequestData
+}
 // 检查 API Key 是否具备 Gemini 权限
 function hasGeminiPermission(apiKeyData, requiredPermission = 'gemini') {
   const permissions = apiKeyData?.permissions || 'all'
@@ -82,7 +109,8 @@ async function handleStandardGenerateContent(req, res) {
         topK: 40
       }
     }
-
+    // 处理测试请求，为 "hi" 请求添加 role 字段
+    processTestRequest(actualRequestData)
     // 只有在 safetySettings 存在且非空时才添加
     if (safetySettings && safetySettings.length > 0) {
       actualRequestData.safetySettings = safetySettings
@@ -294,7 +322,8 @@ async function handleStandardStreamGenerateContent(req, res) {
         topK: 40
       }
     }
-
+    // 处理测试请求，为 "hi" 请求添加 role 字段
+    processTestRequest(actualRequestData)
     // 只有在 safetySettings 存在且非空时才添加
     if (safetySettings && safetySettings.length > 0) {
       actualRequestData.safetySettings = safetySettings

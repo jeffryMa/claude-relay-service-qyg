@@ -72,7 +72,7 @@ class ClaudeConsoleRelayService {
       // logger.info(`📝 After Claude Code system prompt injection: ${JSON.stringify(modifiedRequestBody, null, 2)}`)
 
       // 注入 metadata.user_id
-      modifiedRequestBody = this._ensureMetadataUserId(modifiedRequestBody)
+      modifiedRequestBody = this._ensureMetadataUserId(modifiedRequestBody, accountId)
       // logger.info(`📝 After metadata.user_id injection: ${JSON.stringify(modifiedRequestBody, null, 2)}`)
       // logger.info('📝 =====================================')
 
@@ -155,6 +155,22 @@ class ClaudeConsoleRelayService {
       } else {
        logger.debug('[DEBUG] x-app header already exists, skipping')
       }
+
+      // 添加额外的请求头
+      requestConfig.headers['anthropic-beta'] = 'fine-grained-tool-streaming-2025-05-14'
+      requestConfig.headers['anthropic-dangerous-direct-browser-access'] = 'true'
+      requestConfig.headers['x-stainless-arch'] = 'x64'
+      requestConfig.headers['x-stainless-helper-method'] = 'stream'
+      requestConfig.headers['x-stainless-lang'] = 'js'
+      requestConfig.headers['x-stainless-os'] = 'Windows'
+      requestConfig.headers['x-stainless-package-version'] = '0.60.0'
+      requestConfig.headers['x-stainless-retry-count'] = '0'
+      requestConfig.headers['x-stainless-runtime'] = 'node'
+      requestConfig.headers['x-stainless-runtime-version'] = 'v20.15.0'
+      requestConfig.headers['x-stainless-timeout'] = '600'
+      requestConfig.headers['accept-language'] = '*'
+      requestConfig.headers['sec-fetch-mode'] = 'cors'
+      logger.debug('[DEBUG] Added additional request headers')
 
 
       // 根据 API Key 格式选择认证方式
@@ -322,7 +338,7 @@ class ClaudeConsoleRelayService {
         model: mappedModel
       })
       // 注入 metadata.user_id（流式）
-      modifiedRequestBody = this._ensureMetadataUserId(modifiedRequestBody)
+      modifiedRequestBody = this._ensureMetadataUserId(modifiedRequestBody, accountId)
 
       // 模型兼容性检查已经在调度器中完成，这里不需要再检查
 
@@ -412,6 +428,22 @@ class ClaudeConsoleRelayService {
        } else {
          logger.debug('[DEBUG] x-app header already exists for stream, skipping')
        }
+
+       // 添加额外的请求头（流式）
+       requestConfig.headers['anthropic-beta'] = 'fine-grained-tool-streaming-2025-05-14'
+       requestConfig.headers['anthropic-dangerous-direct-browser-access'] = 'true'
+       requestConfig.headers['x-stainless-arch'] = 'x64'
+       requestConfig.headers['x-stainless-helper-method'] = 'stream'
+       requestConfig.headers['x-stainless-lang'] = 'js'
+       requestConfig.headers['x-stainless-os'] = 'Windows'
+       requestConfig.headers['x-stainless-package-version'] = '0.60.0'
+       requestConfig.headers['x-stainless-retry-count'] = '0'
+       requestConfig.headers['x-stainless-runtime'] = 'node'
+       requestConfig.headers['x-stainless-runtime-version'] = 'v20.15.0'
+       requestConfig.headers['x-stainless-timeout'] = '600'
+       requestConfig.headers['accept-language'] = '*'
+       requestConfig.headers['sec-fetch-mode'] = 'cors'
+       logger.debug('[DEBUG] Added additional request headers for stream')
 
 
       // 根据 API Key 格式选择认证方式
@@ -715,11 +747,29 @@ class ClaudeConsoleRelayService {
 
   // 🧩 确保包含 metadata.user_id，格式类似示例：
   // user_<sha256hex>_account__session_<uuid or sessionHash>
-  _ensureMetadataUserId(body) {
+  _ensureMetadataUserId(body, accountId) {
     try {
       if (!body || typeof body !== 'object') return body
       const clone = JSON.parse(JSON.stringify(body))
-      const userId = 'user_c84e4aaefafb1f89861c00ad336c4567e596e909e291158853af77965ecee51f_account__session_9ce6175e-6161-4aa8-b364-0d2d62410f5b'
+
+      // 生成基于账号ID的唯一sha256hex
+      const crypto = require('crypto')
+      const accountHash = crypto.createHash('sha256').update(`account_${accountId}`).digest('hex')
+
+      // 生成基于日期的sessionHash（每天更换，UUID格式带横线）
+      const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD格式
+      const sessionHashHex = crypto.createHash('sha256').update(`session_${accountId}_${today}`).digest('hex')
+      // 将64位hex转换为UUID格式：xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+      const sessionHash = sessionHashHex.substring(0, 8) + '-' +
+                         sessionHashHex.substring(8, 12) + '-' +
+                         sessionHashHex.substring(12, 16) + '-' +
+                         sessionHashHex.substring(16, 20) + '-' +
+                         sessionHashHex.substring(20, 32)
+
+      const userId = `user_${accountHash}_account__session_${sessionHash}`
+
+      // 打印生成的userId日志
+      logger.info(`🔑 Generated userId for account ${accountId}: ${userId}`)
 
       if (!clone.metadata || typeof clone.metadata !== 'object') {
         clone.metadata = { user_id: userId }
