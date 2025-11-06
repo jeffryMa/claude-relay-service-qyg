@@ -74,7 +74,26 @@ const config = {
     timeout: parseInt(process.env.DEFAULT_PROXY_TIMEOUT) || 600000, // 10分钟
     maxRetries: parseInt(process.env.MAX_PROXY_RETRIES) || 3,
     // IP协议族配置：true=IPv4, false=IPv6, 默认IPv4（兼容性更好）
-    useIPv4: process.env.PROXY_USE_IPV4 !== 'false' // 默认 true，只有明确设置为 'false' 才使用 IPv6
+    useIPv4: process.env.PROXY_USE_IPV4 !== 'false', // 默认 true，只有明确设置为 'false' 才使用 IPv6
+    // 全局代理配置（用于 Gemini API 请求）
+    // 如果启用，所有 Gemini API 请求将优先使用此代理，覆盖账户的代理设置
+    global: {
+      enabled: process.env.GLOBAL_PROXY_ENABLED === 'true', // 是否启用全局代理
+      type: process.env.GLOBAL_PROXY_TYPE || 'socks5', // 代理类型: socks5, http, https
+      host: process.env.GLOBAL_PROXY_HOST || '', // 代理主机地址
+      port: process.env.GLOBAL_PROXY_PORT ? parseInt(process.env.GLOBAL_PROXY_PORT) : null, // 代理端口
+      username: process.env.GLOBAL_PROXY_USERNAME || null, // 代理用户名（可选）
+      password: process.env.GLOBAL_PROXY_PASSWORD || null // 代理密码（可选）
+    }
+
+   // global: {
+    //  enabled: 'true', // 是否启用全局代理 true / false
+   //type: 'http', // 代理类型: socks5, http, https
+   //   host: '173.44.234.252', // 代理主机地址
+   //   port: '7778', // 代理端口
+   //   username: '4setvsqoimp24a', // 代理用户名（可选）
+  //    password: 'z563rj' // 代理密码（可选）
+  //  }
   },
 
   // ⏱️ 请求超时配置

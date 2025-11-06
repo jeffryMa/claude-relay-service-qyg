@@ -1054,11 +1054,13 @@ async function loadCodeAssist(client, projectId = null, proxyConfig = null) {
   }
 
   // 添加代理配置
-  const proxyAgent = ProxyHelper.createProxyAgent(proxyConfig)
+  // 获取有效代理配置（优先全局代理，否则使用账户代理）
+  const effectiveProxy = await ProxyHelper.getEffectiveProxyConfig(proxyConfig)
+  const proxyAgent = ProxyHelper.createProxyAgent(effectiveProxy)
   if (proxyAgent) {
     axiosConfig.httpsAgent = proxyAgent
     logger.info(
-      `🌐 Using proxy for Gemini loadCodeAssist: ${ProxyHelper.getProxyDescription(proxyConfig)}`
+      `🌐 Using proxy for Gemini loadCodeAssist: ${ProxyHelper.getProxyDescription(effectiveProxy)}`
     )
   } else {
     logger.debug('🌐 No proxy configured for Gemini loadCodeAssist')
@@ -1128,11 +1130,13 @@ async function onboardUser(client, tierId, projectId, clientMetadata, proxyConfi
   }
 
   // 添加代理配置
-  const proxyAgent = ProxyHelper.createProxyAgent(proxyConfig)
+  // 获取有效代理配置（优先全局代理，否则使用账户代理）
+  const effectiveProxy = await ProxyHelper.getEffectiveProxyConfig(proxyConfig)
+  const proxyAgent = ProxyHelper.createProxyAgent(effectiveProxy)
   if (proxyAgent) {
     baseAxiosConfig.httpsAgent = proxyAgent
     logger.info(
-      `🌐 Using proxy for Gemini onboardUser: ${ProxyHelper.getProxyDescription(proxyConfig)}`
+      `🌐 Using proxy for Gemini onboardUser: ${ProxyHelper.getProxyDescription(effectiveProxy)}`
     )
   } else {
     logger.debug('🌐 No proxy configured for Gemini onboardUser')
@@ -1259,11 +1263,13 @@ async function countTokens(client, contents, model = 'gemini-2.0-flash-exp', pro
   }
 
   // 添加代理配置
-  const proxyAgent = ProxyHelper.createProxyAgent(proxyConfig)
+  // 获取有效代理配置（优先全局代理，否则使用账户代理）
+  const effectiveProxy = await ProxyHelper.getEffectiveProxyConfig(proxyConfig)
+  const proxyAgent = ProxyHelper.createProxyAgent(effectiveProxy)
   if (proxyAgent) {
     axiosConfig.httpsAgent = proxyAgent
     logger.info(
-      `🌐 Using proxy for Gemini countTokens: ${ProxyHelper.getProxyDescription(proxyConfig)}`
+      `🌐 Using proxy for Gemini countTokens: ${ProxyHelper.getProxyDescription(effectiveProxy)}`
     )
   } else {
     logger.debug('🌐 No proxy configured for Gemini countTokens')
@@ -1334,11 +1340,13 @@ async function generateContent(
   }
 
   // 添加代理配置
-  const proxyAgent = ProxyHelper.createProxyAgent(proxyConfig)
+  // 获取有效代理配置（优先全局代理，否则使用账户代理）
+  const effectiveProxy = await ProxyHelper.getEffectiveProxyConfig(proxyConfig)
+  const proxyAgent = ProxyHelper.createProxyAgent(effectiveProxy)
   if (proxyAgent) {
     axiosConfig.httpsAgent = proxyAgent
     logger.info(
-      `🌐 Using proxy for Gemini generateContent: ${ProxyHelper.getProxyDescription(proxyConfig)}`
+      `🌐 Using proxy for Gemini generateContent: ${ProxyHelper.getProxyDescription(effectiveProxy)}`
     )
   } else {
     logger.debug('🌐 No proxy configured for Gemini generateContent')
@@ -1408,11 +1416,13 @@ async function generateContentStream(
   }
 
   // 添加代理配置
-  const proxyAgent = ProxyHelper.createProxyAgent(proxyConfig)
+  // 获取有效代理配置（优先全局代理，否则使用账户代理）
+  const effectiveProxy = await ProxyHelper.getEffectiveProxyConfig(proxyConfig)
+  const proxyAgent = ProxyHelper.createProxyAgent(effectiveProxy)
   if (proxyAgent) {
     axiosConfig.httpsAgent = proxyAgent
     logger.info(
-      `🌐 Using proxy for Gemini streamGenerateContent: ${ProxyHelper.getProxyDescription(proxyConfig)}`
+      `🌐 Using proxy for Gemini streamGenerateContent: ${ProxyHelper.getProxyDescription(effectiveProxy)}`
     )
   } else {
     logger.debug('🌐 No proxy configured for Gemini streamGenerateContent')

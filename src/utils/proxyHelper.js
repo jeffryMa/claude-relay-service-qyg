@@ -2,6 +2,7 @@ const { SocksProxyAgent } = require('socks-proxy-agent')
 const { HttpsProxyAgent } = require('https-proxy-agent')
 const logger = require('./logger')
 const config = require('../../config/config')
+const globalProxyConfigService = require('../services/globalProxyConfigService')
 
 /**
  * 统一的代理创建工具
@@ -206,6 +207,81 @@ class ProxyHelper {
   static createProxy(proxyConfig, useIPv4 = true) {
     logger.warn('⚠️ ProxyHelper.createProxy is deprecated, use createProxyAgent instead')
     return ProxyHelper.createProxyAgent(proxyConfig, { useIPv4 })
+  }
+
+  /**
+   * 获取有效的代理配置（优先全局代理，否则使用账户代理）
+   * @param {object|string|null} accountProxy - 账户的代理配置
+   * @returns {Promise<object|null>} 有效的代理配置对象或 null
+   */
+  static async getEffectiveProxyConfig(accountProxy = null) {
+    try {
+      // 先检查全局代理是否启用（从配置文件读取，同步方法）
+      const globalProxy = globalProxyConfigService.getEffectiveProxyConfig()
+      if (globalProxy) {
+        logger.debug('🌐 Using global proxy configuration')
+        return globalProxy
+      }
+
+      // 如果全局代理未启用，使用账户代理
+      if (accountProxy) {
+        const accountProxyObj =
+          typeof accountProxy === 'string' ? JSON.parse(accountProxy) : accountProxy
+        logger.debug('🌐 Using account proxy configuration')
+        return accountProxyObj
+      }
+
+      // 都没有配置
+      return null
+    } catch (error) {
+      logger.error('❌ Failed to get effective proxy config:', error)
+      // 出错时回退到账户代理
+      if (accountProxy) {
+        try {
+          return typeof accountProxy === 'string' ? JSON.parse(accountProxy) : accountProxy
+        } catch (e) {
+          return null
+        }
+      }
+      return null
+    }
+  }
+
+  /**
+   * 同步版本：获取有效的代理配置（优先全局代理，否则使用账户代理）
+   * 注意：此方法不会检查全局代理，仅用于需要同步调用的场景
+   * 推荐使用异步版本 getEffectiveProxyConfig
+   * @param {object|string|null} accountProxy - 账户的代理配置
+   * @param {object|string|null} globalProxy - 全局代理配置（如果已获取）
+   * @returns {object|null} 有效的代理配置对象或 null
+   */
+  static getEffectiveProxyConfigSync(accountProxy = null, globalProxy = null) {
+    try {
+      // 如果提供了全局代理，优先使用
+      if (globalProxy) {
+        const globalProxyObj =
+          typeof globalProxy === 'string' ? JSON.parse(globalProxy) : globalProxy
+        if (globalProxyObj && globalProxyObj.enabled && globalProxyObj.proxy) {
+          const proxy =
+            typeof globalProxyObj.proxy === 'string'
+              ? JSON.parse(globalProxyObj.proxy)
+              : globalProxyObj.proxy
+          return proxy
+        }
+      }
+
+      // 否则使用账户代理
+      if (accountProxy) {
+        const accountProxyObj =
+          typeof accountProxy === 'string' ? JSON.parse(accountProxy) : accountProxy
+        return accountProxyObj
+      }
+
+      return null
+    } catch (error) {
+      logger.error('❌ Failed to get effective proxy config (sync):', error)
+      return null
+    }
   }
 }
 

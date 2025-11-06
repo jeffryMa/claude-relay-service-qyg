@@ -276,11 +276,14 @@ async function sendGeminiRequest({
     timeout: config.requestTimeout || 600000
   }
 
-  // 添加代理配置
-  const proxyAgent = createProxyAgent(proxy)
+  // 获取有效代理配置（优先全局代理，否则使用账户代理）
+  const effectiveProxy = await ProxyHelper.getEffectiveProxyConfig(proxy)
+  const proxyAgent = createProxyAgent(effectiveProxy)
   if (proxyAgent) {
     axiosConfig.httpsAgent = proxyAgent
-    logger.info(`🌐 Using proxy for Gemini API request: ${ProxyHelper.getProxyDescription(proxy)}`)
+    logger.info(
+      `🌐 Using proxy for Gemini API request: ${ProxyHelper.getProxyDescription(effectiveProxy)}`
+    )
   } else {
     logger.debug('🌐 No proxy configured for Gemini API request')
   }
@@ -385,11 +388,13 @@ async function getAvailableModels(accessToken, proxy, projectId, location = 'us-
     timeout: config.requestTimeout || 600000
   }
 
-  const proxyAgent = createProxyAgent(proxy)
+  // 获取有效代理配置（优先全局代理，否则使用账户代理）
+  const effectiveProxy = await ProxyHelper.getEffectiveProxyConfig(proxy)
+  const proxyAgent = createProxyAgent(effectiveProxy)
   if (proxyAgent) {
     axiosConfig.httpsAgent = proxyAgent
     logger.info(
-      `🌐 Using proxy for Gemini models request: ${ProxyHelper.getProxyDescription(proxy)}`
+      `🌐 Using proxy for Gemini models request: ${ProxyHelper.getProxyDescription(effectiveProxy)}`
     )
   } else {
     logger.debug('🌐 No proxy configured for Gemini models request')
@@ -485,12 +490,13 @@ async function countTokens({
     timeout: config.requestTimeout || 600000
   }
 
-  // 添加代理配置
-  const proxyAgent = createProxyAgent(proxy)
+  // 获取有效代理配置（优先全局代理，否则使用账户代理）
+  const effectiveProxy = await ProxyHelper.getEffectiveProxyConfig(proxy)
+  const proxyAgent = createProxyAgent(effectiveProxy)
   if (proxyAgent) {
     axiosConfig.httpsAgent = proxyAgent
     logger.info(
-      `🌐 Using proxy for Gemini countTokens request: ${ProxyHelper.getProxyDescription(proxy)}`
+      `🌐 Using proxy for Gemini countTokens request: ${ProxyHelper.getProxyDescription(effectiveProxy)}`
     )
   } else {
     logger.debug('🌐 No proxy configured for Gemini countTokens request')

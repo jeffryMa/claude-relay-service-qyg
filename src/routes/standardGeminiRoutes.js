@@ -6,6 +6,7 @@ const geminiAccountService = require('../services/geminiAccountService')
 const unifiedGeminiScheduler = require('../services/unifiedGeminiScheduler')
 const apiKeyService = require('../services/apiKeyService')
 const sessionHelper = require('../utils/sessionHelper')
+const ProxyHelper = require('../utils/proxyHelper')
 
 // 导入 geminiRoutes 中导出的处理函数
 const { handleLoadCodeAssist, handleOnboardUser, handleCountTokens } = require('./geminiRoutes')
@@ -156,17 +157,10 @@ async function handleStandardGenerateContent(req, res) {
       apiKeyId: req.apiKey?.id || 'unknown'
     })
 
-    // 解析账户的代理配置
-    let proxyConfig = null
-    if (account.proxy) {
-      try {
-        proxyConfig = typeof account.proxy === 'string' ? JSON.parse(account.proxy) : account.proxy
-      } catch (e) {
-        logger.warn('Failed to parse proxy configuration:', e)
-      }
-    }
+    // 获取有效代理配置（优先全局代理，否则使用账户代理）
+    const effectiveProxy = await ProxyHelper.getEffectiveProxyConfig(account.proxy)
 
-    const client = await geminiAccountService.getOauthClient(accessToken, refreshToken, proxyConfig)
+    const client = await geminiAccountService.getOauthClient(accessToken, refreshToken, effectiveProxy)
 
     // 项目ID优先级：账户配置的项目ID > 临时项目ID > 尝试获取
     let effectiveProjectId = account.projectId || account.tempProjectId || null
@@ -175,7 +169,7 @@ async function handleStandardGenerateContent(req, res) {
     if (!effectiveProjectId) {
       try {
         logger.info('📋 No projectId available, attempting to fetch from loadCodeAssist...')
-        const loadResponse = await geminiAccountService.loadCodeAssist(client, null, proxyConfig)
+        const loadResponse = await geminiAccountService.loadCodeAssist(client, null, effectiveProxy)
 
         if (loadResponse.cloudaicompanionProject) {
           effectiveProjectId = loadResponse.cloudaicompanionProject
@@ -220,7 +214,7 @@ async function handleStandardGenerateContent(req, res) {
       userPromptId, // 使用生成的 user_prompt_id
       effectiveProjectId, // 使用处理后的项目ID
       req.apiKey?.id, // 使用 API Key ID 作为 session ID
-      proxyConfig
+      effectiveProxy
     )
 
     // 记录使用统计
@@ -380,17 +374,10 @@ async function handleStandardStreamGenerateContent(req, res) {
       }
     })
 
-    // 解析账户的代理配置
-    let proxyConfig = null
-    if (account.proxy) {
-      try {
-        proxyConfig = typeof account.proxy === 'string' ? JSON.parse(account.proxy) : account.proxy
-      } catch (e) {
-        logger.warn('Failed to parse proxy configuration:', e)
-      }
-    }
+    // 获取有效代理配置（优先全局代理，否则使用账户代理）
+    const effectiveProxy = await ProxyHelper.getEffectiveProxyConfig(account.proxy)
 
-    const client = await geminiAccountService.getOauthClient(accessToken, refreshToken, proxyConfig)
+    const client = await geminiAccountService.getOauthClient(accessToken, refreshToken, effectiveProxy)
 
     // 项目ID优先级：账户配置的项目ID > 临时项目ID > 尝试获取
     let effectiveProjectId = account.projectId || account.tempProjectId || null
@@ -399,7 +386,7 @@ async function handleStandardStreamGenerateContent(req, res) {
     if (!effectiveProjectId) {
       try {
         logger.info('📋 No projectId available, attempting to fetch from loadCodeAssist...')
-        const loadResponse = await geminiAccountService.loadCodeAssist(client, null, proxyConfig)
+        const loadResponse = await geminiAccountService.loadCodeAssist(client, null, effectiveProxy)
 
         if (loadResponse.cloudaicompanionProject) {
           effectiveProjectId = loadResponse.cloudaicompanionProject
@@ -445,7 +432,7 @@ async function handleStandardStreamGenerateContent(req, res) {
       effectiveProjectId, // 使用处理后的项目ID
       req.apiKey?.id, // 使用 API Key ID 作为 session ID
       abortController.signal,
-      proxyConfig
+      effectiveProxy
     )
 
     // 设置 SSE 响应头
